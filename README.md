@@ -14,6 +14,7 @@ The web gallery displayed with [Fotorama.io](https://fotorama.io/).
 `python3 tfviewer.py datasets/COCO/tfrecord/coco_train.record-00003-of-00100 --labels-to-highlight='car;truck;bus;motorcycle'`
 
 with new flags:
+
 `python3 tfviewer.py datasets/COCO/tfrecord/coco_train.record-00003-of-00100 --labels-to-highlight='car;truck;bus;motorcycle' --disable_bboxes --savepath path/to/dir`
 
 ![Detection example](http://cmp.felk.cvut.cz/~sulcmila/tfrecord-viewer/detection.png)
