@@ -86,7 +86,7 @@ class DetectionOverlay:
     Returns:
       image_bytes: JPEG image including bounding boxes.
     """
-    img = Image.open(io.BytesIO(image_bytes))
+    img = Image.open(io.BytesIO(image_bytes)).convert('RGBA')
 
     draw = ImageDraw.Draw(img)
 
@@ -104,6 +104,6 @@ class DetectionOverlay:
     with io.BytesIO() as output:
       if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
-      img.save(output, format="JPEG")
+      img.save(output, format="png")
       output_image = output.getvalue()
     return output_image

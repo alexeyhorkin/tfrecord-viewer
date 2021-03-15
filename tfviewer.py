@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 import sys
 import io
+import os
 import argparse
 
-import tensorflow as tf
+import PIL.Image as Image
+
+import tensorflow.compat.v1  as tf
 from flask import Flask, render_template, send_file
 
 from overlays import overlay_factory
+
+from tqdm import tqdm
 
 app = Flask(__name__)
 
@@ -35,6 +40,8 @@ parser.add_argument("-v", "--verbose", help="increase output verbosity",
 parser.add_argument('--overlay', type=str, default="detection",
                     help='Overlay to display. (detection/classification/none)')
 
+parser.add_argument('--savepath', type=str, default='',
+                    help='path to save images')
 
 #######################################
 # Object detection specific arguments #
@@ -52,6 +59,8 @@ parser.add_argument('--coordinates-in-pixels', action="store_true",
 parser.add_argument('--labels-to-highlight', type=str, default="car",
                     help='Labels for which bounding boxes should be highlighted (red instead of blue).')
 
+parser.add_argument('--disable_bboxes', action='store_true',
+                    help='Disable or enable bboxes to draw')
 
 ###########################################
 # Image classification specific arguments #
@@ -67,6 +76,16 @@ images = []
 filenames = []
 captions = []
 bboxes = []
+
+def save_images(path_to_save):
+  print(f'Start image saving into {path_to_save} ...')
+  if not os.path.exists(path_to_save):
+    os.makedirs(path_to_save)
+  for i, img in tqdm(enumerate(images)):
+    img_ = Image.open(io.BytesIO(img))
+    filename, _ = os.path.splitext(filenames[i])
+    pts = os.path.join(path_to_save, filename + '.png')
+    img_.save(pts)
 
 
 def preload_images(max_images):
@@ -93,7 +112,11 @@ def preload_images(max_images):
         filename = feat[args.filename_key].bytes_list.value[0].decode("utf-8")
         img =  feat[args.image_key].bytes_list.value[0]
         
-        img_with_overlay = overlay.apply_overlay(img, feat)
+        if not args.disable_bboxes:
+          img_with_overlay = overlay.apply_overlay(img, feat)
+        else:
+          img_with_overlay = img
+
 
         filenames.append(filename)
         images.append(img_with_overlay)
@@ -110,7 +133,7 @@ def frontpage():
   html = ""
   for i,filename in enumerate(filenames):
     html += '<img data-u="image" src="image/%s" data-caption="%s" />\n' % (i, captions[i])
-  return render_template('gallery.html', header=args.tfrecords, images=html)
+  return render_template('gallery.html', header='Tfrecords visualization', images=html)
 
 @app.route('/image/<key>')
 def get_image(key):
@@ -135,10 +158,10 @@ def add_header(r):
   r.headers['Cache-Control'] = 'public, max-age=0'
   return r
 
-
 if __name__ == "__main__":
   print("Pre-loading up to %d examples.." % args.max_images)
   count = preload_images(args.max_images)
   print("Loaded %d examples" % count)
+  if args.savepath:
+    save_images(args.savepath)
   app.run(host=args.host, port=args.port)
-
