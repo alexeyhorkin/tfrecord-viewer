@@ -43,6 +43,9 @@ parser.add_argument('--overlay', type=str, default="detection",
 parser.add_argument('--savepath', type=str, default='',
                     help='path to save images')
 
+parser.add_argument('--imgnames', type=str, default='',
+                    help='path to file with image names which need to save and visualize;')
+
 #######################################
 # Object detection specific arguments #
 parser.add_argument('--bbox-name-key', type=str, default="image/object/class/text",
@@ -88,7 +91,13 @@ def save_images(path_to_save):
     img_.save(pts)
 
 
-def preload_images(max_images):
+def load_image_names(imgnames_path):
+  with open(imgnames_path, 'r') as f:
+    res = f.readlines()
+    content = [x.strip() for x in res] 
+    return set(content)
+
+def preload_images(max_images, imgnames):
   """ 
   Load images to be displayed in the browser gallery.
 
@@ -99,6 +108,8 @@ def preload_images(max_images):
   """
   count = 0
   overlay = overlay_factory.get_overlay(args.overlay, args)
+  imgnames  = load_image_names(args.imgnames) if args.imgnames else set()
+  already_added_filenames = set() 
 
   for tfrecord_path in args.tfrecords:
     print("Filename: ", tfrecord_path)
@@ -110,6 +121,10 @@ def preload_images(max_images):
 
       if len(images) < max_images:
         filename = feat[args.filename_key].bytes_list.value[0].decode("utf-8")
+        if imgnames and filename not in imgnames: 
+          continue # just skip file
+        if filename in already_added_filenames:
+          continue
         img =  feat[args.image_key].bytes_list.value[0]
         
         if not args.disable_bboxes:
@@ -117,8 +132,8 @@ def preload_images(max_images):
         else:
           img_with_overlay = img
 
-
         filenames.append(filename)
+        already_added_filenames.add(filename)
         images.append(img_with_overlay)
         captions.append( tfrecord_path + ":" + filename )
       else:
@@ -160,7 +175,7 @@ def add_header(r):
 
 if __name__ == "__main__":
   print("Pre-loading up to %d examples.." % args.max_images)
-  count = preload_images(args.max_images)
+  count = preload_images(args.max_images, args.imgnames)
   print("Loaded %d examples" % count)
   if args.savepath:
     save_images(args.savepath)
