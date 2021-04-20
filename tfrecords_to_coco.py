@@ -1,15 +1,15 @@
 import sys
 import io
-import os
 import argparse
 import logging
 import json
-import tensorflow.compat.v1  as tf
+import tensorflow.compat.v1 as tf
 import PIL.Image as Image
 from tqdm import tqdm
 
 
-parser = argparse.ArgumentParser(description='TF Records converter to coco fromat.')
+parser = argparse.ArgumentParser(
+                    description='TF Records converter to coco fromat.')
 parser.add_argument('--tfrecords', type=str, nargs='+',
                     help='path to TF record(s) to view')
 
@@ -25,38 +25,49 @@ parser.add_argument('--filename-key', type=str, default="image/filename",
 
 #######################################
 # Object detection specific arguments #
-parser.add_argument('--bbox-name-key', type=str, default="image/object/class/text",
+parser.add_argument('--bbox-name-key', type=str,
+                    default="image/object/class/text",
                     help='Key to the bbox label.')
 
-parser.add_argument('--bbox-xmin-key', type=str, default="image/object/bbox/xmin")
-parser.add_argument('--bbox-xmax-key', type=str, default="image/object/bbox/xmax")
-parser.add_argument('--bbox-ymin-key', type=str, default="image/object/bbox/ymin")
-parser.add_argument('--bbox-ymax-key', type=str, default="image/object/bbox/ymax")
+parser.add_argument('--bbox-xmin-key', type=str,
+                    default="image/object/bbox/xmin")
+parser.add_argument('--bbox-xmax-key', type=str,
+                    default="image/object/bbox/xmax")
+parser.add_argument('--bbox-ymin-key', type=str,
+                    default="image/object/bbox/ymin")
+parser.add_argument('--bbox-ymax-key', type=str,
+                    default="image/object/bbox/ymax")
 
 parser.add_argument('--coordinates-in-pixels', action="store_true",
-                    help='Set if bounding box coordinates are saved in pixels, not in %% of image width/height.')
+                    help='Set if bounding box coordinates are \
+                     saved in pixels, not in %% of image width/height.')
 
 parser.add_argument('--labels', type=str, default="car;bird",
-                    help='Labels for which bounding boxes should be written to output json.')
+                    help='Labels for which bounding boxes \
+                    should be written to output json.')
 
 ###########################################
 # Image classification specific arguments #
-parser.add_argument('--class-label-key', type=str, default="image/class/text",
+parser.add_argument('--class-label-key', type=str,
+                    default="image/class/text",
                     help='Key to the image class label.')
 
 
 def get_categories(args):
+    logger.info('Setup categories...')
     labels_to_highlight = list(args.labels.split(';'))
     categories = []
     start_id = 1000
     for label in labels_to_highlight:
         category_dict = {
-            "supercategory": label, 
+            "supercategory": label,
             "id": start_id,
             "name": label}
         categories.append(category_dict)
         start_id += 1
+    logger.info('Done categories')
     return categories
+
 
 def get_mapper_from_label_to_category_id(categories):
     mapper = {}
@@ -66,8 +77,12 @@ def get_mapper_from_label_to_category_id(categories):
         mapper[label_] = id_
     return mapper
 
+
 def box_corner_to_center(x_min, y_min, x_max, y_max):
-    """Convert from (x_min, y_min, x_max, y_max) to (cx, cy, width, height)"""
+    """
+    Convert from (x_min, y_min, x_max, y_max)
+    to (cx, cy, width, height)
+    """
     cx = (x_min + x_max) / 2
     cy = (y_min + y_max) / 2
     w = x_max - x_min
@@ -83,7 +98,8 @@ def get_bbox_tuples_and_labels(args, feature):
     """
     labels, bboxes = [], []
     if args.bbox_name_key in feature:
-        for ibbox, label in enumerate (feature[args.bbox_name_key].bytes_list.value):
+        for ibbox, label in enumerate(
+                            feature[args.bbox_name_key].bytes_list.value):
             bbox = box_corner_to_center(
                         feature[args.bbox_xmin_key].float_list.value[ibbox],
                         feature[args.bbox_ymin_key].float_list.value[ibbox],
@@ -95,16 +111,18 @@ def get_bbox_tuples_and_labels(args, feature):
         print("Bounding box key '%s' not present." % (args.bbox_name_key))
     return labels, bboxes
 
-def process_data(args, logger, map_label_to_categoty_id):
+
+def process_data(args, map_label_to_categoty_id):
     """
     Load all images annotation
     returns dict (will be json)
     """
+    logger.info('Start process tfrecords')
     images, annotations = [], []
     img_id, annotation_id = 1, 1
-    for tfrecord_path in tqdm(args.tfrecords):
-        print("Filename: ", tfrecord_path)
-        for i, record in enumerate(tf.python_io.tf_record_iterator(tfrecord_path)):
+    for tfrecord_path in tqdm(args.tfrecords, position=0, leave=True):
+        for i, record in enumerate(
+                         tf.python_io.tf_record_iterator(tfrecord_path)):
             example = tf.train.Example()
             example.ParseFromString(record)
             feat = example.features.feature
@@ -129,8 +147,9 @@ def process_data(args, logger, map_label_to_categoty_id):
                 annotations.append(annotation)
                 annotation_id += 1
             img_id += 1
-
+    logger.info('Process tfrecords end')
     return images, annotations
+
 
 def create_coco_json(images, annotations, categories):
     data_json = {}
@@ -139,18 +158,45 @@ def create_coco_json(images, annotations, categories):
     data_json['categories'] = categories
     return data_json
 
+
 def save_json(json_data, output_path):
     with open(output_path, 'w') as fp:
         json.dump(json_data, fp, indent=4)
+    logging.info(f'Json was saved. File path: {output_path}')
+
+
+class NotTFDepricatedMessage(logging.Filter):
+    def filter(self, record):
+        return not ('deprecated' in record.getMessage()
+                    and
+                    'tensorflow' in record.getMessage())
+
+
+def logging_setup():
+    formatter = logging.Formatter(
+                '%(asctime)s | from: %(name)s  [%(levelname)s]: %(message)s')
+    logger = logging.getLogger(__name__)
+    stdout_handler = logging.StreamHandler(stream=sys.stdout)
+    stdout_handler.setLevel(logging.INFO)
+    stdout_handler.setFormatter(formatter)
+    logger.addHandler(stdout_handler)
+    logger.setLevel(logging.DEBUG)  # include all kind of messages
+    tf_logger = tf.get_logger()
+    tf_logger.addFilter(NotTFDepricatedMessage())  # not pass tf depricated messages
+    return logger
+
+
+logger = logging_setup()  # create logger
+
 
 def main():
     args = parser.parse_args()
-    logger = logging.getLogger(__name__)
     categories = get_categories(args)
     maper_label_to_categoty_id = get_mapper_from_label_to_category_id(categories)
-    images, annotations = process_data(args, logger, maper_label_to_categoty_id)
+    images, annotations = process_data(args, maper_label_to_categoty_id)
     coco_json_data = create_coco_json(images, annotations, categories)
     save_json(coco_json_data, args.output_path)
+
 
 if __name__ == '__main__':
     main()
