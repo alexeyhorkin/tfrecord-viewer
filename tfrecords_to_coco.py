@@ -79,18 +79,38 @@ def get_mapper_from_label_to_category_id(categories):
     return mapper
 
 
-def box_corner_to_coco_format(x_min, y_min, x_max, y_max):
+def bboxes_to_pixels(bbox, im_width, im_height):
+    """
+    Convert bounding box coordinates to pixels.
+    (It is common that bboxes are parametrized as percentage of image size
+    instead of pixels.)
+
+    Args:
+      bboxes (tuple): (xmin, xmax, ymin, ymax)
+      im_width (int): image width in pixels
+      im_height (int): image height in pixels
+
+    Returns:
+      bboxes (tuple): (xmin, xmax, ymin, ymax)
+    """
+    xmin, xmax, ymin, ymax = bbox
+    return xmin * im_width, xmax * im_width, ymin * im_height, ymax * im_height
+
+
+def box_corner_to_coco_format(x_min, y_min, x_max, y_max, im_width, im_height):
     """
     According to this: https://github.com/cocodataset/cocoapi/issues/102
     Convert from (x_min, y_min, x_max, y_max)
     to (x_min, y_min, width, height)
     """
+    bbox_coords = x_min, x_max, y_min, y_max
+    x_min, x_max, y_min, y_max = bboxes_to_pixels(bbox_coords, im_width, im_height)
     w = x_max - x_min
     h = y_max - y_min
     return x_min, y_min, w, h
 
 
-def get_bbox_tuples_and_labels(args, feature):
+def get_bbox_tuples_and_labels(args, feature, im_width, im_height):
     """
     args: Namespace with arguments from argparser
     feature: features from tensorflow tfrecords
@@ -104,7 +124,8 @@ def get_bbox_tuples_and_labels(args, feature):
                         feature[args.bbox_xmin_key].float_list.value[ibbox],
                         feature[args.bbox_ymin_key].float_list.value[ibbox],
                         feature[args.bbox_xmax_key].float_list.value[ibbox],
-                        feature[args.bbox_ymax_key].float_list.value[ibbox])
+                        feature[args.bbox_ymax_key].float_list.value[ibbox],
+                        im_width, im_height)
             bboxes.append(bbox)
             labels.append(label.decode("utf-8"))
     else:
@@ -130,7 +151,7 @@ def process_data(args, map_label_to_categoty_id):
             w, h = Image.open(io.BytesIO(img)).size
             filename = feat[args.filename_key].bytes_list.value[0].decode("utf-8")
 
-            labels, bboxes = get_bbox_tuples_and_labels(args, feat)
+            labels, bboxes = get_bbox_tuples_and_labels(args, feat, w, h)
             img_dict = {"id": img_id,
                         "width": w,
                         "height": h,
