@@ -1,5 +1,6 @@
 import sys
 import io
+import os
 import argparse
 import logging
 import json
@@ -78,16 +79,15 @@ def get_mapper_from_label_to_category_id(categories):
     return mapper
 
 
-def box_corner_to_center(x_min, y_min, x_max, y_max):
+def box_corner_to_coco_format(x_min, y_min, x_max, y_max):
     """
+    According to this: https://github.com/cocodataset/cocoapi/issues/102
     Convert from (x_min, y_min, x_max, y_max)
-    to (cx, cy, width, height)
+    to (x_min, y_min, width, height)
     """
-    cx = (x_min + x_max) / 2
-    cy = (y_min + y_max) / 2
     w = x_max - x_min
     h = y_max - y_min
-    return cx, cy, w, h
+    return x_min, y_min, w, h
 
 
 def get_bbox_tuples_and_labels(args, feature):
@@ -100,7 +100,7 @@ def get_bbox_tuples_and_labels(args, feature):
     if args.bbox_name_key in feature:
         for ibbox, label in enumerate(
                             feature[args.bbox_name_key].bytes_list.value):
-            bbox = box_corner_to_center(
+            bbox = box_corner_to_coco_format(
                         feature[args.bbox_xmin_key].float_list.value[ibbox],
                         feature[args.bbox_ymin_key].float_list.value[ibbox],
                         feature[args.bbox_xmax_key].float_list.value[ibbox],
@@ -147,7 +147,7 @@ def process_data(args, map_label_to_categoty_id):
                 annotations.append(annotation)
                 annotation_id += 1
             img_id += 1
-    logger.info('Process tfrecords end')
+    logger.info('Finish!')
     return images, annotations
 
 
@@ -160,6 +160,10 @@ def create_coco_json(images, annotations, categories):
 
 
 def save_json(json_data, output_path):
+    dir_path = os.path.dirname(output_path)
+    if dir_path and not os.path.exists(dir_path):
+        os.makedirs(dir_path)
+
     with open(output_path, 'w') as fp:
         json.dump(json_data, fp, indent=4)
     logging.info(f'Json was saved. File path: {output_path}')
