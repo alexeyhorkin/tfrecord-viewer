@@ -5,9 +5,9 @@ import argparse
 import logging
 import json
 import tensorflow.compat.v1 as tf
+import utils
 import PIL.Image as Image
 from tqdm import tqdm
-
 
 parser = argparse.ArgumentParser(
                     description='TF Records converter to coco fromat.')
@@ -17,41 +17,7 @@ parser.add_argument('--tfrecords', type=str, nargs='+',
 parser.add_argument('--output_path', type=str, default='output.json',
                     help='path to save json')
 
-parser.add_argument('--image-key', type=str, default="image/encoded",
-                    help='Key to the encoded image.')
-
-parser.add_argument('--filename-key', type=str, default="image/filename",
-                    help='Key to the unique ID of each record.')
-
-
-#######################################
-# Object detection specific arguments #
-parser.add_argument('--bbox-name-key', type=str,
-                    default="image/object/class/text",
-                    help='Key to the bbox label.')
-
-parser.add_argument('--bbox-xmin-key', type=str,
-                    default="image/object/bbox/xmin")
-parser.add_argument('--bbox-xmax-key', type=str,
-                    default="image/object/bbox/xmax")
-parser.add_argument('--bbox-ymin-key', type=str,
-                    default="image/object/bbox/ymin")
-parser.add_argument('--bbox-ymax-key', type=str,
-                    default="image/object/bbox/ymax")
-
-parser.add_argument('--coordinates-in-pixels', action="store_true",
-                    help='Set if bounding box coordinates are \
-                     saved in pixels, not in %% of image width/height.')
-
-parser.add_argument('--labels', type=str, default="car;bird",
-                    help='Labels for which bounding boxes \
-                    should be written to output json.')
-
-###########################################
-# Image classification specific arguments #
-parser.add_argument('--class-label-key', type=str,
-                    default="image/class/text",
-                    help='Key to the image class label.')
+utils.update_parser_to_object_detection_args(parser)
 
 
 def get_categories(args):
@@ -150,6 +116,8 @@ def process_data(args, map_label_to_categoty_id):
             img = feat[args.image_key].bytes_list.value[0]
             w, h = Image.open(io.BytesIO(img)).size
             filename = feat[args.filename_key].bytes_list.value[0].decode("utf-8")
+            if '/' in filename:
+                filename = filename.replace('/', '-')
 
             labels, bboxes = get_bbox_tuples_and_labels(args, feat, w, h)
             img_dict = {"id": img_id,
@@ -190,28 +158,7 @@ def save_json(json_data, output_path):
     logging.info(f'Json was saved. File path: {output_path}')
 
 
-class NotTFDepricatedMessage(logging.Filter):
-    def filter(self, record):
-        return not ('deprecated' in record.getMessage()
-                    and
-                    'tensorflow' in record.getMessage())
-
-
-def logging_setup():
-    formatter = logging.Formatter(
-                '%(asctime)s | from: %(name)s  [%(levelname)s]: %(message)s')
-    logger = logging.getLogger(__name__)
-    stdout_handler = logging.StreamHandler(stream=sys.stdout)
-    stdout_handler.setLevel(logging.INFO)
-    stdout_handler.setFormatter(formatter)
-    logger.addHandler(stdout_handler)
-    logger.setLevel(logging.DEBUG)  # include all kind of messages
-    tf_logger = tf.get_logger()
-    tf_logger.addFilter(NotTFDepricatedMessage())  # not pass tf depricated messages
-    return logger
-
-
-logger = logging_setup()  # create logger
+logger = utils.logging_setup(__name__)  # create logger
 
 
 def main():
