@@ -40,6 +40,9 @@ parser.add_argument('--savepath', type=str, default='',
 parser.add_argument('--imgnames', type=str, default='',
                     help='path to file with image names which need to save and visualize;')
 
+parser.add_argument('--disable_bboxes', action='store_true',
+                    help='Disable drow bboxes')
+
 update_parser_to_object_detection_args(parser)
 
 args = parser.parse_args()

@@ -10,7 +10,7 @@ class DetectionOverlay:
   
   def __init__(self, args):
     self.args = args
-    self.labels_to_highlight = args.labels_to_highlight.split(";")
+    self.labels_to_highlight = args.labels.split(";")
     self.font = ImageFont.truetype("./fonts/OpenSans-Regular.ttf", 12)
 
   def apply_overlay(self, image_bytes, feature):

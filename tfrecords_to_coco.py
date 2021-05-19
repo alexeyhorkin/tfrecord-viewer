@@ -7,6 +7,7 @@ import json
 import tensorflow.compat.v1 as tf
 import utils
 import PIL.Image as Image
+
 from tqdm import tqdm
 
 parser = argparse.ArgumentParser(
@@ -24,7 +25,7 @@ def get_categories(args):
     logger.info('Setup categories...')
     labels_to_highlight = list(args.labels.split(';'))
     categories = []
-    start_id = 1000
+    start_id = 0
     for label in labels_to_highlight:
         category_dict = {
             "supercategory": label,
@@ -105,6 +106,7 @@ def process_data(args, map_label_to_categoty_id):
     returns dict (will be json)
     """
     logger.info('Start process tfrecords')
+    filenames = {}
     images, annotations = [], []
     img_id, annotation_id = 1, 1
     for tfrecord_path in tqdm(args.tfrecords, position=0, leave=True):
@@ -118,24 +120,27 @@ def process_data(args, map_label_to_categoty_id):
             filename = feat[args.filename_key].bytes_list.value[0].decode("utf-8")
             if '/' in filename:
                 filename = filename.replace('/', '-')
-
-            labels, bboxes = get_bbox_tuples_and_labels(args, feat, w, h)
-            img_dict = {"id": img_id,
-                        "width": w,
-                        "height": h,
-                        "file_name": filename}
-            images.append(img_dict)
-            for label, bbox_info in zip(labels, bboxes):
-                annotation = {"id": annotation_id,
-                              "image_id": img_id,
-                              "category_id": map_label_to_categoty_id[label],
-                              "segmentation": [[]],
-                              "area": bbox_info[2] * bbox_info[3],
-                              "bbox": list(bbox_info),
-                              "iscrowd": 0}
-                annotations.append(annotation)
-                annotation_id += 1
-            img_id += 1
+            if filename not in filenames:
+                filenames[filename] = True
+                labels, bboxes = get_bbox_tuples_and_labels(args, feat, w, h)
+                if len(labels) == 0:
+                    logger.info(f"NO LABELS in: {filename}")
+                img_dict = {"id": img_id,
+                            "width": w,
+                            "height": h,
+                            "file_name": filename}
+                images.append(img_dict)
+                for label, bbox_info in zip(labels, bboxes):
+                    annotation = {"id": annotation_id,
+                                "image_id": img_id,
+                                "category_id": map_label_to_categoty_id[label],
+                                "segmentation": [[]],
+                                "area": bbox_info[2] * bbox_info[3],
+                                "bbox": list(bbox_info),
+                                "iscrowd": 0}
+                    annotations.append(annotation)
+                    annotation_id += 1
+                img_id += 1
     logger.info('Finish!')
     return images, annotations
 
