@@ -1,4 +1,3 @@
-import sys
 import io
 import os
 import argparse
@@ -7,8 +6,11 @@ import json
 import tensorflow.compat.v1 as tf
 import utils
 import PIL.Image as Image
+import numpy as np
 
 from tqdm import tqdm
+from sklearn.model_selection import train_test_split
+
 
 parser = argparse.ArgumentParser(
                     description='TF Records converter to coco fromat.')
@@ -17,6 +19,9 @@ parser.add_argument('--tfrecords', type=str, nargs='+',
 
 parser.add_argument('--output_path', type=str, default='output.json',
                     help='path to save json')
+
+parser.add_argument('--split', action='store_true',
+                    help='if specified, images and their annotation will be splitted on test and train')
 
 utils.update_parser_to_object_detection_args(parser)
 
@@ -121,7 +126,7 @@ def process_data(args, map_label_to_categoty_id):
             if '/' in filename:
                 filename = filename.replace('/', '-')
             if filename not in filenames:
-                filenames[filename] = True
+                filenames[filename] = img_id
                 labels, bboxes = get_bbox_tuples_and_labels(args, feat, w, h)
                 if len(labels) == 0:
                     logger.info(f"NO LABELS in: {filename}")
@@ -135,14 +140,86 @@ def process_data(args, map_label_to_categoty_id):
                                 "image_id": img_id,
                                 "category_id": map_label_to_categoty_id[label],
                                 "segmentation": [[]],
-                                "area": bbox_info[2] * bbox_info[3],
-                                "bbox": list(bbox_info),
+                                "area": np.round(bbox_info[2] * bbox_info[3], 3),
+                                "bbox": list(map(lambda x: np.round(x, 2), bbox_info)),
                                 "iscrowd": 0}
                     annotations.append(annotation)
                     annotation_id += 1
                 img_id += 1
     logger.info('Finish!')
     return images, annotations
+
+
+def process_data_split_test_train(args, map_label_to_categoty_id, test_size=0.33):
+    """
+    Load all images annotation
+    returns dict (will be json)
+    """
+    logger.info('Start process tfrecords')
+    filenames = {}
+    images_train, annotations_train = [], []
+    images_test, annotations_test = [], []
+    all_img_names = []
+    for tfrecord_path in args.tfrecords:
+        for i, record in enumerate(
+                         tf.python_io.tf_record_iterator(tfrecord_path)):
+            example = tf.train.Example()
+            example.ParseFromString(record)
+            feat = example.features.feature
+            img = feat[args.image_key].bytes_list.value[0]
+            w, h = Image.open(io.BytesIO(img)).size
+            filename = feat[args.filename_key].bytes_list.value[0].decode("utf-8")
+            if '/' in filename:
+                filename = filename.replace('/', '-')
+            if filename not in filenames:
+                filenames[filename] = True
+                all_img_names.append(filename)
+
+    filenames = {}
+
+    img_names_train, _ =  train_test_split(all_img_names, test_size=test_size, shuffle=False, random_state=42)
+
+    img_id, annotation_id = 1, 1
+    for tfrecord_path in tqdm(args.tfrecords, position=0, leave=True):
+        for i, record in enumerate(
+                         tf.python_io.tf_record_iterator(tfrecord_path)):
+            example = tf.train.Example()
+            example.ParseFromString(record)
+            feat = example.features.feature
+            img = feat[args.image_key].bytes_list.value[0]
+            w, h = Image.open(io.BytesIO(img)).size
+            filename = feat[args.filename_key].bytes_list.value[0].decode("utf-8")
+            if '/' in filename:
+                filename = filename.replace('/', '-')
+            if filename not in filenames:
+                filenames[filename] = img_id
+                labels, bboxes = get_bbox_tuples_and_labels(args, feat, w, h)
+                if len(labels) == 0:
+                    logger.info(f"NO LABELS in: {filename}")
+                img_dict = {"id": img_id,
+                            "width": w,
+                            "height": h,
+                            "file_name": filename}
+                if filename in img_names_train:
+                    images_train.append(img_dict)
+                else:
+                    images_test.append(img_dict)
+                for label, bbox_info in zip(labels, bboxes):
+                    annotation = {"id": annotation_id,
+                                "image_id": img_id,
+                                "category_id": map_label_to_categoty_id[label],
+                                "segmentation": [[]],
+                                "area": np.round(bbox_info[2] * bbox_info[3], 3),
+                                "bbox": list(map(lambda x: np.round(x, 2), bbox_info)),
+                                "iscrowd": 0}
+                    if filename in img_names_train:
+                        annotations_train.append(annotation)
+                    else:
+                        annotations_test.append(annotation)
+                    annotation_id += 1
+                img_id += 1
+    logger.info('Finish!')
+    return images_train, annotations_train, images_test, annotations_test 
 
 
 def create_coco_json(images, annotations, categories):
@@ -170,9 +247,17 @@ def main():
     args = parser.parse_args()
     categories = get_categories(args)
     maper_label_to_categoty_id = get_mapper_from_label_to_category_id(categories)
-    images, annotations = process_data(args, maper_label_to_categoty_id)
-    coco_json_data = create_coco_json(images, annotations, categories)
-    save_json(coco_json_data, args.output_path)
+    if not args.split:
+        images, annotations = process_data(args, maper_label_to_categoty_id)
+        coco_json_data = create_coco_json(images, annotations, categories)
+        save_json(coco_json_data, args.output_path)
+
+    else:
+        images_train, annotations_train, images_test, annotations_test = process_data_split_test_train(args, maper_label_to_categoty_id)
+        coco_json_train = create_coco_json(images_train, annotations_train, categories)
+        coco_json_test = create_coco_json(images_test, annotations_test, categories)
+        save_json(coco_json_train, os.path.join(args.output_path, 'train.json'))
+        save_json(coco_json_test, os.path.join(args.output_path, 'test.json'))
 
 
 if __name__ == '__main__':
