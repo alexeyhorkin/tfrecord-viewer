@@ -20,6 +20,10 @@ parser.add_argument('--tfrecords', type=str, nargs='+',
 parser.add_argument('--output_path', type=str, default='output.json',
                     help='path to save json')
 
+parser.add_argument('--cat_start_id', type=int, default=0,
+                    help='Start category id, if N categories correspond to \
+                    cat_start_id, cat_start_id + 1, ... cat_start_id + N ids')
+
 parser.add_argument('--split', action='store_true',
                     help='if specified, images and their annotation will be splitted on test and train')
 
@@ -30,7 +34,7 @@ def get_categories(args):
     logger.info('Setup categories...')
     labels_to_highlight = list(args.labels.split(';'))
     categories = []
-    start_id = 0
+    start_id = args.cat_start_id
     for label in labels_to_highlight:
         category_dict = {
             "supercategory": label,
